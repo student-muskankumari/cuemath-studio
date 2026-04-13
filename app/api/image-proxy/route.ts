@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Vercel Hobby plan defaults to 10s timeout — increase to 60s for image generation
+export const maxDuration = 60;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -89,7 +92,7 @@ async function fromPollinations(
     if (polKey) headers["Authorization"] = `Bearer ${polKey}`;
 
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), model === "flux-pro" ? 50000 : 35000);
+    const timer = setTimeout(() => ctrl.abort(), model === "flux-pro" ? 20000 : 15000);
     const res = await fetch(url, { signal: ctrl.signal, headers, cache: "no-store" });
     clearTimeout(timer);
 
@@ -143,7 +146,7 @@ async function fromHuggingFace(prompt: string): Promise<{ buffer: ArrayBuffer; t
   try {
     console.log("[img] Trying HuggingFace FLUX.1-schnell...");
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     const res = await fetch(
       "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
       {
@@ -196,7 +199,15 @@ export async function GET(req: NextRequest) {
     "Access-Control-Allow-Origin": "*",
   };
 
-  // 1. Pollinations (authenticated — fast, pollen refills hourly)
+  // 1. HuggingFace FLUX (fast, reliable, ~3-5s)
+  const hf = await fromHuggingFace(rawPrompt);
+  if (hf) {
+    return new NextResponse(hf.buffer, {
+      headers: { "Content-Type": hf.type, ...cache, "X-Image-Source": "huggingface" },
+    });
+  }
+
+  // 2. Pollinations fallback (when HuggingFace hits daily limit)
   const pol = await enqueue(async () => {
     const polFlux = await fromPollinations(rawPrompt, seed, "flux");
     if (polFlux) return { buf: polFlux, src: "pollinations-flux" };
@@ -209,14 +220,6 @@ export async function GET(req: NextRequest) {
   if (pol) {
     return new NextResponse(pol.buf, {
       headers: { "Content-Type": "image/jpeg", ...cache, "X-Image-Source": pol.src },
-    });
-  }
-
-  // 2. HuggingFace (backup when Pollinations fails)
-  const hf = await fromHuggingFace(rawPrompt);
-  if (hf) {
-    return new NextResponse(hf.buffer, {
-      headers: { "Content-Type": hf.type, ...cache, "X-Image-Source": "huggingface" },
     });
   }
 
