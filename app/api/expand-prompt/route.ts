@@ -39,6 +39,9 @@ Vague input: "multiplication"
 expanded_prompt: "Most kids memorise multiplication tables — but 60% can't apply them 6 months later. Carousel showing the difference between memorising and understanding multiplication, with 3 real examples of how understanding (not drilling) makes mental math feel like a superpower. Ends with a 5-minute game parents can play at dinner."
 suggested_format: "carousel"`;
 
+const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash";
+
 export async function POST(req: NextRequest) {
   const { vague_prompt } = await req.json();
 
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   // Try Groq first (fastest), then Gemini, then Mistral
   const providers = [
-    async () => {
+    { name: "Groq", run: async () => {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           messages: [
             { role: "system", content: EXPAND_SYSTEM_PROMPT },
             { role: "user", content: userMsg },
@@ -70,24 +73,24 @@ export async function POST(req: NextRequest) {
       if (!res.ok) throw new Error(`Groq ${res.status}`);
       const d = await res.json();
       return JSON.parse(d.choices[0].message.content);
-    },
-    async () => {
+    } },
+    { name: "Gemini", run: async () => {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: EXPAND_SYSTEM_PROMPT + "\n\n" + userMsg }] }],
-            generationConfig: { response_mime_type: "application/json", temperature: 0.85 },
+            generationConfig: { responseMimeType: "application/json", temperature: 0.85 },
           }),
         }
       );
       if (!res.ok) throw new Error(`Gemini ${res.status}`);
       const d = await res.json();
       return JSON.parse(d.candidates[0].content.parts[0].text);
-    },
-    async () => {
+    } },
+    { name: "Mistral", run: async () => {
       const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -108,14 +111,17 @@ export async function POST(req: NextRequest) {
       const d = await res.json();
       const text = d.choices[0].message.content.replace(/```json|```/g, "").trim();
       return JSON.parse(text);
-    },
+    } },
   ];
 
-  for (const fn of providers) {
+  for (const provider of providers) {
     try {
-      const result = await fn();
+      const result = await provider.run();
       return NextResponse.json({ success: true, ...result });
-    } catch { /* try next */ }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[expand-prompt] ${provider.name} failed: ${message}`);
+    }
   }
 
   return NextResponse.json({ success: false, error: "All providers failed." }, { status: 500 });

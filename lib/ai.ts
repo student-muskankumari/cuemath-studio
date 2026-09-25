@@ -1,5 +1,8 @@
 import { Slidedeck, SlideFormat } from "@/types";
 
+const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash";
+
 function buildPrompt(userPrompt: string, format: SlideFormat): string {
   const count = format === "carousel" ? "5" : format === "story" ? "4" : "1";
   const size = format === "story" ? "9:16 vertical" : "1:1 square";
@@ -58,7 +61,7 @@ async function callGroq(prompt: string, format: SlideFormat): Promise<Slidedeck>
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [
         { role: "system", content: "You are a viral social media copywriter. Return only valid raw JSON. No markdown. No backticks. No explanation." },
         { role: "user", content: buildPrompt(prompt, format) },
@@ -74,13 +77,13 @@ async function callGroq(prompt: string, format: SlideFormat): Promise<Slidedeck>
 
 async function callGemini(prompt: string, format: SlideFormat): Promise<Slidedeck> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: buildPrompt(prompt, format) }] }],
-        generationConfig: { response_mime_type: "application/json", temperature: 0.95 },
+        generationConfig: { responseMimeType: "application/json", temperature: 0.95 },
       }),
     }
   );
@@ -159,7 +162,7 @@ Respond ONLY with: {"headline":"...","body":"...","tone":"hook|explain|example|c
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userMsg }],
           response_format: { type: "json_object" },
           temperature: 0.85,
@@ -171,13 +174,13 @@ Respond ONLY with: {"headline":"...","body":"...","tone":"hook|explain|example|c
     },
     async () => {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: sysPrompt + "\n\n" + userMsg }] }],
-            generationConfig: { response_mime_type: "application/json", temperature: 0.85 },
+            generationConfig: { responseMimeType: "application/json", temperature: 0.85 },
           }),
         }
       );
@@ -218,7 +221,7 @@ RULES:
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userMsg }],
           temperature: 0.9,
         }),
@@ -229,7 +232,7 @@ RULES:
     },
     async () => {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
